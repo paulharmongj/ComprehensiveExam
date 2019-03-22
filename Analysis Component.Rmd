@@ -1,0 +1,294 @@
+---
+title: "Data Analysis Component"
+author: "Paul Harmon"
+date: "3/10/2019"
+header-includes: 
+   \usepackage{graphicx}
+   \usepackage{fancyhdr}
+   \pagestyle{fancy}
+   \setlength\headheight{28pt}
+   \fancyhead[L]{\includegraphics[width=5cm]{Images/MSU_logo.jpg}}
+   
+   \fancyfoot[LE,RO]{PH Comps}
+output: 
+  pdf_document:
+    latex_engine: xelatex
+mainfont: Calibri
+sansfont: Calibri Light
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr);library(ggplot2);library(dplyr)
+library(magrittr);library(tibble);library(pander)
+
+library(tidyr)
+library(tibble);library(corrplot);library(readxl)
+library(beanplot);library(lme4);library(lmerTest)
+library(emmeans);library(car)
+```
+
+Read Liang, Hiley, and Kanosue (2019) available at https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0212334. The data set related to AOS (or just "Area" in the spreadsheet) is provided in a similar format to what they posted with some useful metadata in the second sheet of the spreadsheet.
+
+Answer the first seven questions inline with each question (including code and output with each question), then attach a written report that puts some of these results together based on the instructions in the last question. Include an appendix to the written report with any additional work (code and output) not completed in earlier questions. This should take approximately two days to complete.
+
+* Resources: For this exam you may use any textbooks or course materials. You are also free to use any publicly available materials that you might come across in a research setting; however, all writing must be original and all reference materials must be cited.
+
+* Computer Code and Reproducibility: Please turn in all relevant computer code to reproduce your results; a reproducible document is a requirement for this section of the PhD comp. A PDF generated from R Markdown is the preferred form.
+
+* Time: This part of the exam is meant to take two days - approximately 16 hours to complete.
+
+* Advice: Be sure to adequately justify your answers and choices and appropriately reference any sources used. If you have questions about the exam, please email Mark Greenwood (greenwood@montana.edu) for clarifications.
+
+
+
+# Introduction
+This document outlines the questions asked in the data analysis component of the PhD Comprehensive Exam. As question 8 requires writing a separate report, that is submitted as a separate document. In line with the requirements for this examination, this document was created in Rmarkdown with reproducible R-code in-line. 
+
+
+**1) Modify the data set for the AOS (or just "Area") to be prepared for analysis. Preferably perform data modifications in a reproducible fashion and report the code you used to perform this. If not, clearly document the steps you took to prepare the data set for analysis.**
+
+ The code below modifies the data so that they can be analyzed with a single response variable, Area of the Stabiliogram. The data are saved in an Excel file so it makes sense to utilize the readxl package for this. Within the dataset, the data were recorded in a non-standard manner - there are 3 data matrices of dimension 30x8 that need to be parsed out - the easiest way to do this was to read the data into R and wrangle things as shown in the code chunk below. 
+
+The two data matrices that did not pertain to the Area response were removed from the data and the column names were re-written and replaced by the first row of the read-in file. Then, data were saved as a tibble and coerced into the proper forms (i.e. Sports is a factor, Y is a double). 
+
+```{r modify_code}
+## Requires the relevant packages
+## Reads in the data
+bal <- read_excel('Data/LiangData.xlsx', sheet = "Liang_etal")
+head(bal)
+
+#nice to see these guys are real data gurus. What an awful format
+
+#goal: modify the data for AOS to be prepped for analysis
+bal_area <- bal[,1:8] #pulls the first 8 columns before column 9 (the empty one)
+column_names <- bal_area[1,]
+bal_tibble <- as_tibble(bal_area[-1,]);names(bal_tibble) <- as.character(column_names)
+dim(bal_tibble)
+bal_tibble$Participant <- 1:30
+#the above code outputs a dataset with 30 rows and 8 measurements
+
+#still a weird format - we would prefer to have 3 columns: Sport, Eyes, Position
+eyenames <- grep('C',column_names) #want C because O would be conflated with OL
+#recall that we don't have a column for open toes here so only 7 columns instead of 8
+bal_tibble_open <- select(bal_tibble, -eyenames)
+bal_tibble_closed <- select(bal_tibble, c(eyenames,Sport,Participant))
+
+#adds a feature to the datset for eyes open or closed
+bal_tibble_open$Eyes <- rep("Open", nrow(bal_tibble_open))
+bal_tibble_closed$Eyes <- rep("Closed", nrow(bal_tibble_closed))
+
+
+#these will be our position variables to append to the 'long'-form dataset
+open_position <- rep(c('Q','OL','OL_F','T'), each = nrow(bal_tibble_open))
+closed_position <- rep(c('Q','OL','OL_F'), each = nrow(bal_tibble_closed))
+
+#now we want to actually do the converstion on bal_tibbles to long form
+library(tidyr)
+open_long <- bal_tibble_open %>% gather(key = Position, value = Y,OQ,OOL, OOL_F,OT)
+closed_long <- bal_tibble_closed %>% gather(key = Position, value = Y, CQ,COL,COL_F)
+open_long$POS <- open_position
+closed_long$POS <- closed_position
+
+#Whew! Now we put it all together by rbinding the two tibbles
+full_dat <- rbind(open_long, closed_long)
+full_dat$Y <- as.numeric(as.character(full_dat$Y))
+
+fdat <- full_dat %>% filter(!POS %in% 'T') 
+filter_dat <- fdat %>% select(-Y) %>% lapply(as.factor)%>% as_tibble()
+filter_dat$Y <- fdat$Y
+
+pander(head(filter_dat,3)) #prints just the first three observations
+```
+
+
+**2) Make plot that resembles their Figure 2 that incorporates some sort of uncertainty estimates with the means. Note that this will show that the units in the data set provided appear to be in square millimeters instead of square centimeters in their plot.**
+
+Figure 2 in the document includes a 3-way interaction plot, with error bars for uncertainty. I took a slightly different approach in replicating this plot with shaded areas for the uncertainty in each mean estimate. The plot gives the mean area (in square mm, compared with the plot in Figure 2 shown in square cm) associated with each group of responses. Uncertainty in the mean estimates was incorporated by fitting a geom_ribbon() with upper and lower boundaries that match a 95% Confidence Interval around the means. 
+
+```{r fig_2, fig.align = 'center'}
+means <- filter_dat %>% group_by(Sport,Eyes,POS) %>% summarise(mean(Y))
+names(means)[4] <- 'Agmean'
+means$POS <- factor(means$POS, levels = c("Q","OL","OL_F"))
+
+sd <- filter_dat %>% group_by(Sport, Eyes, POS) %>% summarise(sd(Y))
+names(sd)[4] <- "SD"
+means$upper <- means$Agmean + 1.96*sd$SD/sqrt(3) #since xbar has sd sqrt(sigma^2/n)
+means$lower <- means$Agmean -1.96*sd$SD/sqrt(3) #same
+
+#actually creates the plot (with ribbons instead of bands for uncertainty)
+O <- ggplot(filter(means,Eyes == 'Open'), aes(POS,Agmean,group = Sport)) +
+  geom_line(aes(color = Sport), size = 3) + ylab("Mean Area (mm)") +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Sport), alpha = .2)+ 
+  theme_bw() + ylim(c(0,3100)) + ggtitle("Eyes Open") + 
+   theme(plot.title = element_text(hjust = 0.5), legend.position = "none") 
+#for eyes closed
+
+C <- ggplot(filter(means, Eyes == 'Closed'), aes(POS, Agmean, group = Sport))+
+  geom_line(aes(color = Sport), size = 3) + ylab("Mean Area (mm)") + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Sport), alpha = .2)+ 
+  theme_bw() +theme(plot.title = element_text(hjust = 0.5)) + ggtitle("Eyes Closed")+
+   ylim(c(0,3100))
+
+#create the plot with ggarrange
+library(ggpubr)
+ggarrange(O,C)
+
+```
+
+
+**3) Replicate the models of the authors for the "Area", also called "AOS". You should be able to replicate the F-statistics at the end of page 4 and top of page 5. Report your code and an ANOVA table and note the results that match.**
+
+I replicated the models the authors fit with a standard 3-factor ANOVA model. The F-statistics for all of the effects match (within small rounding error), and are shown in Table 1. 
+
+```{r}
+## Replication of the ANOVA
+#this fits the cell-means version
+aov1 <- lm(Y ~ POS * Eyes *Sport, data = filter_dat)
+#summary(aov1) #to get parameter estimates
+set.caption("Analysis of Variance results matching paper.")
+pander(anova(aov1))
+
+```
+
+**4) Were the F-tests that they reported based on Type I, II, or III tests? Or is it impossible to tell here? Why?**
+
+Were the F-tests based on Type I, II, or III tests? 
+
+Based on the estimated F-statistics in the model, it is clear that they did not use Type III sums of squares (nor would I expect them to have, given the level of statistical sophistication evident throughout the paper). Because Type III SS consider effects entering into the model conditionally (i.e. based on the other features already included), it includes an intercept estimate as well, thus the difference. 
+
+It is impossible to distinguish whether they used Type II or Type I Sums of Squares because the design was balanced, with each of the treatment/respondent combinations having the same number of replications. For reference, I used the car package in R to calculate the other two types of SS - they are shown below. 
+
+```{r}
+Anova(aov1, type = "II")
+Anova(aov1, type = "III")
+```
+
+**5) Return to the model that they used that included the three-way interaction of sport, stance, and eyes open/closed. Note their model assumptions and use the study design and appropriately made diagnostic plots for their model to discuss/ assess those assumptions. You should find some clear issues with their model.**
+
+The 3-way interaction model that was used by the researchers assumes several important things: 
+
++ **Independence** of the individual response values. This assumption is likely violated. While we might reasonably assume that the participants were independent (and even this is, frankly, debateable to a degree), the researchers made no attempt to address the fact that they were measuring the same participant 24 times (with three measurements thrown out for a total of 21 used measurements. 
+
+We can use the plots shown in Figure X to assess the other two assumptions of ANOVA: 
++ **Normality**: The residuals of the model (and therefore the responses) should be normally distributed. 
++ **Constant Variance**: The variation of response values in each treatment group should be constant for all treatment combinations. 
+
+```{r assume, fig.cap = "QQ Plots and Residual Plots to assess observations", fig.align = 'center'}
+par(mfrow = c(2,2))
+plot(aov1, pch = 20, col = "blue3")
+
+```
+
+The top left panel of Figure X shows the residuals vs. the fitted plot, which is helpful in diagnosing the homoskedasticity (constant variance) of the residuals. It is pretty obvious that the responses have a non-constant variance as for fitted values that are small, the spread of residuals is quite narrow whereas for large fitted values, the spread is substantially wider. 
+
+The assumption of normality is also likely unjustified, despite the relatively large sample size in the data. The QQ plot indicates that the distribution of the residuals is more heavy-tailed than would be expected under a normal model. While I am less concerned about this issue than the non-constant variance, it is still an important violation to note. 
+
+Moreover, I find it interesting how the authors addressed these assumptions in the paper. On page 4, they note that "The Shapiro-Wilks test was used for normality, and homogeneity of variance was investigated using Levene's test"(2019). They do not show results for either test. I do not normally prefer these tests to model diagnostics like those shown above since the tests themselves make assumptions about normality/variance (i.e. Levene's test is not great given the demonstrated lack of normality). However, I went ahead and carried both tests out below. 
+
+It is possible that they mis-interpreted the results (in both cases, a small p-value provides evidence of the undesireable outcome), or the omission is disingenuous as the results were inconvenient. With Levene's test, I was able to generate a large p-value if I only included Sport as the group (perhaps this is what they did). The results indicate further evidence that the assumptions were violated. 
+
+```{r}
+# not sure about their Shapiro-Wilks test 
+shapiro.test(filter_dat$Y)
+leveneTest(filter_dat$Y, group = interaction(filter_dat$Sport,filter_dat$Eyes,filter_dat$POS))
+ # I suspect they grouped by Sport when they ran this because that's the only non-significant result
+
+#non-significant p-value if I do it this way: Maybe this is what they did? 
+leveneTest(filter_dat$Y, group = filter_dat$Sport)
+```
+
+
+**6) You should not be terribly impressed by the model they chose and how they worked with it. Fit a more appropriate model for this response variable that assesses the same 3-way interaction. Directly compare your results for the tests they report and explain any differences.**
+
+At minimum, they should have considered the non-constant variance plaguing their results. Additionally, they should have controlled for the correlated responses within each participant (i.e. repeated measures). 
+
+Prior to jumping into a mixed model, I considered transforming the response variable with a log-transformation. The log-transformation makes the most sense because the problem with constant variance and non-normality is exacerbated by large values that would be mitigated when log-transformed. 
+
+```{r}
+beanplot(filter_dat$Y, main = "Beanplot of Raw Response"); beanplot(log(filter_dat$Y), main = "Beanplot of Log-Transformed Responses")
+
+```
+
+Refitting the model with a log-transformed response gives the following diagnostics. For interpretability reasons, I typically dislike transforming the data; however, in this case, the log-transform is a major improvement over the untransformed data. The residual plot is much improved with equal spreads for all the fitted values, and the heavy-tail problem is greatly mitigated in QQ plot in the upper right panel of Figure X. This is not the only change that needs to be made, but if it were, it would still improve the results of the model. 
+
+```{r newdiag, fig.cap = "Diagnostics from the log-transformed model.", fig.align = 'center'}
+filter_dat$LogY <- log(filter_dat$Y)
+aov2 <- lm(LogY ~ POS * Eyes *Sport, data = filter_dat)
+par(mfrow = c(2,2))
+plot(aov2, pch = 20, col = "blue3")
+```
+
+Log-transforming the response solves several of the problems with the model but does not fix the issue with repeated measures. I instead fit a random-intercept model that accounts for the repeated measures on each respondent. (Note that this model is very similar to a GLS model with a Compound Symmetry correlation structure). 
+
+```{r, cache = TRUE}
+mm1 <- lmer(LogY ~ POS * Eyes *Sport + (1|Participant), data = filter_dat)
+summary(mm1)
+
+
+summary(mm1)
+par(mfrow = c(1,2))
+qqnorm(resid(mm1), main = "QQ Plot");qqline(resid(mm1))
+plot(mm1, pch = 20, main = "Residual Plot", xlab = "Fitted Values", ylab = "Residuals")
+```
+
+Now, before we can directly compare the results between this model and the one fit by the researchers, we need to make a decision on which degrees of freedom method should be used for the mixed-effects model. Kuznetsova, Brockhoff, and Christensen (2017) offer a bit of insight that "Satterthwaite's method can be considered as a good alternative [and]... is generally faster than Kenward-Roger's"(pp 16), although in a relatively simple model such as this they likely perform the same.
+
+The results from compmaring Type II SS indicate that the test statistics for Position (POS), Eyes, and Sport's main effects are all larger than the author's model. Moreover, the mixed effects model finds evidence in favor of all three two-way interactions whereas the author's ANOVA does not detect an interaction effect between Position and Sport. Neither of the models find evidence of a three-way interaction, and considering the number of additional parameters to be estimated, I would consider dropping it from the model. 
+
+```{r}
+anova(aov1)
+anova(mm1, type = "II")
+```
+
+
+**Note**: Recall that the study design asked participants to stand still on a plate for 60 seconds. They were asked to do this 24 times, often standing only on one foot or balancing on their toes without being able to steady themselves (as this would be antithetical to the goal of the experiment). To me, this sounds quite tiring - I would expect that balance would deteriorate as the experiment went on. Although the researchers randomized the order of treatments, this effect could still have been useful in estimating some sort of time-varying correlation structure for measurements within a respondent (AR1, etc). However, this information is not made available in the data so order-driven correlation structures are unavailable to us at this juncture. 
+ 
+**7) Suppose that another researcher had published a study that estimated the difference between eyes open and eyes closed for baseball players in the unipedal-foam level. Use your model to generate estimates for open eyes, baseball, unipedal-foam and closed eyes, baseball, unipedal-form combinations and confidence intervals for each estimate. Then generate an estimate and a 95% confidence interval for the difference in those two combinations of levels. You do not need to report this as part of the final report unless you think it or something similar provides utility in summarizing results.**
+
+Using the emmmeans package, it is possible to generate predicted means in each of the combinations of factors. We can also get a conservative estimate of the difference between any pair of combinations using the Tukey method to control for multiple comparisons. My perspective is that if the goal is to compare the results of this analysis to another paper from a different researcher, it would be best to use a conservative method like Tukey to control for multiple comparisons. 
+
+Then, if we do detect a difference between the groups, we have hedged our methodology enough that our results ought to be detecting something relatively real. 
+
+With that methodology in mind, we estimate difference between Open and Closed eyes for baseball players standing in the unipedal position on foam: 
+
+```{r}
+
+em_sport <- emmeans(mm1, c("Sport","POS","Eyes"))
+em_sport
+plot(em_sport) + ggtitle("Predicted Means") + theme_bw() + xlab("Predicted Log Mean") + ylab("Combinations")
+pairs(em_sport)[57,]
+confint(pairs(em_sport)[57,])
+#1,OL_F,Closed - 1,OL_F,Open
+```
+
+
+**8) Write a report that contains a more appropriate analysis of this response variable that starts with addressing the eyes open/closed, stance, and sport interaction. You can potentially pursue model refinement/modifications as you see fit, clearly reporting the model you used and how you arrived at it, and should attempt to interpret/explain results based on more than just p-values. The report should contain sections such as introduction, methods, results, and a scope of inference. This should be around 5 pages of double-spaced text with figures and tables following the text or around 10 pages with double-spaced text and tables and figures integrated within the document. Any analyses not performed in the prior questions should be included as an appendix to this analysis.**
+
+Report attached as a separate document. 
+
+
+
+
+# Session Information: 
+
+Additional information about the R session I worked in is given here: 
+```{r}
+#getRversion()
+sessionInfo()
+
+```
+
+
+
+
+
+
+
+
+### Additional Things to Think About: 
+
+
+
+
+

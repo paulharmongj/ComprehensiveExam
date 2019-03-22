@@ -1,0 +1,106 @@
+---
+title: "Bayes and STAT 550 Component"
+author: "Paul Harmon"
+date: "3/25/2019"
+header-includes: 
+   \usepackage{graphicx}
+   \usepackage{fancyhdr}
+   \pagestyle{fancy}
+   \setlength\headheight{28pt}
+   \fancyhead[L]{\includegraphics[width=5cm]{Images/MSU_logo.jpg}}
+   
+   \fancyfoot[LE,RO]{PH Comps}
+output: 
+  pdf_document:
+    latex_engine: xelatex
+mainfont: Calibri
+sansfont: Calibri Light
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr);library(ggplot2);library(dplyr)
+library(magrittr);library(tibble)
+```
+
+# Introduction
+
+*This document contains my solutions to the STAT 532/STAT 550 component of the PhD Comprehensive Exam. In accordance with the requirement for reproducibility, this document was generated as an R-Markdown file with all relevant code included either in line (when necessary) or in an appendix at the end of the document.*
+
+
+# Zero-Truncated Binomial
+
+## a. The PMF for the ZT Binomial distribution is given below: 
+
+$$ f_X(x) = P(X=x) = {n \choose x}\frac{(p)^x(1-p)^{n-x}}{(1-(1-p)^n)} $$ 
+
+b. Assume there are m iid observations from a ZT Binomial with $n=2$ trials
+
+**Don't forget the 2nd Derivative Test** 
+
+c.  The MLE does not exist in closed form for greater than 3 trials. Given this, I would utilize a numerical approximation method that allows the MLE to be found iteratively. Specifically, I would consider using a Newton-Raphson method. 
+
+The downside to this method is that in certain cases, the likelihood function may not have an easy-to-find global maximum, or the algorithm may have the potential to get stuck in a local optimum. Therefore, I would start the algorithm with different starting values and check for consistency in my solution. 
+
+d. Typically, I would take advantage of the asymptotic properties of MLE's as my primary way to assess the uncertainty around the estimate. There are several ways to build confidence intervals 
+
+e. Simulation Study
+
+**Add a QR code into the document and link to the app**. 
+
+f. The simulation study found that 
+
+
+
+
+# Bayesian Estimation of Zero-Truncated Binomial 
+
+
+a. Philosophy for choosing priors
+
+b. State and defend a prior for each $p_i$:
+
++ Common Juniper
++ Subalpine Fir
++ Fringed Sagebrush
++ Black Sagebrush
+
+An unimformative prior would be to assign the same uniform(0,1) to each of the species. Alternatively, a prior distribution could be included so that we take advantage of what appears to be two pretty distinct subpopulations (i.e. Juniper and Alpine Fir tend to cover at a 50 percent probability, and Sagebrush varieties cover at a much lower rate). 
+
+```{r coverage_plot}
+
+```
+
+
+c. Implementing the prior, we have: 
+
+
+d. Assuming my cousin is a biology major (without much in the way of statistical background), the results of the model are still quite interesting. 
+
+**Include a graphic!** 
+```{r cousin_graphic}
+
+```
+
+
+e.  Note below that covariate information is available at each site. We have 24 covariates available for each of the 150 sites, including seemingly germane features such as Elevation, Slope, temperature-related variables during the year, and other features relating to the climate of each site. 
+
+IF we wanted to take advantage of including these features in the model, our framework would change from estimating a single-parameter model to a more complex multiple regression framework. Consider the classical linear model framework for a binary-regression problem: 
+$$ log(Y) = \bf{X}\beta$$ 
+We can consider the 
+
+
+As a last note, it is likely that many of the features are correlated or at least contain similar information. Obviously this is a problem in either Bayesian regression models or traditional frequentist regression settings. Careful consideration of features should be taken even before the model is fit (i.e. note that 'winpet' is 0 for all values) and models should be compared using **Bayes Factors** to determine the optimal regression model that takes advantage of additional covariates. 
+
+```{r}
+library(corrplot)
+corrplot(cor(dplyr::select(shoshsite, - winpet)), order = 'hclust')
+```
+
+
+
+
+
+# References
+
+
