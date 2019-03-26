@@ -7,11 +7,12 @@
 #    http://shiny.rstudio.com/
 #
 
-library(shiny)
+library(shiny);library(shinythemes);library(actuar)
 
 # Define UI for application that draws a histogram
-ui <- fluidPage(
-
+ui <- fluidPage( 
+    #shiny Theme
+    theme = shinytheme("united"),
     # Application title
     titlePanel("Simulation Study"),
 
@@ -22,7 +23,7 @@ ui <- fluidPage(
                         "Choose m:",
                         min = 1,
                         max = 50,
-                        value = 30)
+                        value = 5)
         ,
         sliderInput("pval",
                     "Choose probability:",
@@ -45,35 +46,62 @@ server <- function(input, output) {
 
     output$distPlot <- renderPlot({
         #simulate the data using the actuar package's data
-        m <- input$mval
-        p <- input$pval
-        sim.dat <- rztbinom(100, size = m, prob = p)
+        m <- input$mval #number of trials
+        p <- input$pval #probablility of success on each trial
+        
+        sim.dat <- rztbinom(m, size = 2, prob = p)
         #sim.dat <- rbinom(100, m, p)
         #True Mean
         TM <- m*p/(1-(1-p)^m)
         
+        #bootstrap_function: 
+        boot_bin <- function(n.boot, data){
+            #initializes a matrix to store bootstrapped values
+            boot_mean <- rep(0, n.boot)
+            for (j in 1:n.boot){
+                #samples indices from observed data (a vector)
+                bs.index <- sample(1:length(data),n.boot,replace = TRUE)
+                bs <- data[bs.index]
+                #calculates the estimate we need
+                boot_mean[j] <- mean(bs)/(2*m)
+            }
+            
+            return(boot_mean)}
         
         #sample mean
-        BIN.mle <- mean(sim.dat)/m #gives us the sum of the x_i divided by the number of reps, i.e. xbar
-        BIN.wald.sd <- sqrt(BIN.mle *(1-BIN.mle)/2) #gives the wald CI
+        BIN.mle <- mean(sim.dat)/(2) #gives us the sum of the x_i divided by the number of reps, i.e. xbar
+        #create a bootstrapped estimate of the 95% CI
+        BIN.sd.boot <- 1000*sd(boot_bin(500, data = sim.dat))
         BIN.alpha <- rgb(200,30,120,alpha = 80, maxColorValue = 255)
         #mean(sim.dat) gives the same output
         
-        #binomial estimator
-        ZBIN.mle <- mean(sim.dat)/2 #sample output
-        ZBIN.var <- sqrt(ZBIN.mle *(1-ZBIN.mle)/20) #test output
+        #zero-truncated binomial estimator (still iffy on this one!)
+        x <- sim.dat
+        ZBIN.mle <- (-(2*sum(x) +4*m - 4) + sqrt((-2*sum(x)-4*m + 4)^2 - 4*(-2*sum(x) - 4*m + 4)*(2*sum(x) + 2)))/(4*(sum(x) + m - 1))
+        
+        boot_Zbin <- function(n.boot, data){
+            #initializes a matrix to store bootstrapped values
+            boot_mean <- rep(0, n.boot)
+            for (j in 1:n.boot){
+                #samples indices from observed data (a vector)
+                bs.index <- sample(1:length(data),n.boot,replace = TRUE)
+                x <- data[bs.index]
+                #calculates the estimate we need
+                boot_mean[j] <-  (-(2*sum(x) +4*m - 4) + sqrt((-2*sum(x)-4*m + 4)^2 - 4*(-2*sum(x) - 4*m + 4)*(2*sum(x) + 2)))/(4*(sum(x) + m - 1))
+                
+            }
+            
+            return(boot_mean)}
+        ZBIN.var <- 1000*sd(boot_Zbin(500, data = sim.dat)) #var of bootstrapped version
         Z.alpha <- rgb(60,200,100,alpha = 80, maxColorValue = 255)
         
-        ## How quickly could I put together a shiny app for this? 
-        #     sliders for m, p
-        #     show the two estimators
         
-        plot(0:2, 0:2, type = "n", main = "Truncated vs. Binomial Simulated Means")
-        abline(v = p, col = "blue", lwd = 2)
+        plot(0:1, 0:1, type = "n", main = "Truncated vs. Binomial Simulated Means")
+        abline(v = p, col = "blue", lwd = 2, lty = 2)
         abline(v = ZBIN.mle, col = rgb(60,200,100, maxColorValue = 255)) #adds Zero-Truncated Version
         rect(xleft = ZBIN.mle-ZBIN.var, xright = ZBIN.mle + ZBIN.var,ybottom = .5, ytop = 1, col = Z.alpha)
         abline(v = BIN.mle, col = rgb(200,30,120, maxColorValue = 255)) #adds MLE in 
-        rect(xleft = BIN.mle-BIN.wald.sd, xright = BIN.mle + BIN.wald.sd,ybottom = 0, ytop = .5, col = BIN.alpha)
+        rect(xleft = BIN.mle-BIN.sd.boot, xright = BIN.mle + BIN.sd.boot,ybottom = 0, ytop = .5, col = BIN.alpha)
         legend('topleft', fill = c(rgb(60,200,100, maxColorValue = 255),rgb(200,30,120, maxColorValue = 255),'blue'), legend = c('Truncated','Binomial','True Prob'), bty = 'n')  
         
     })

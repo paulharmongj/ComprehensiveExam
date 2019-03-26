@@ -1,0 +1,12 @@
+name: CompSimulationStudy
+title: CompSimulationStudy
+username:
+account: paulharmon
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 810906
+bundleId: 1962371
+url: https://paulharmon.shinyapps.io/CompSimulationStudy/
+when: 1553488026.1123
+asMultiple: FALSE
+asStatic: FALSE

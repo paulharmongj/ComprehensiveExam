@@ -1,0 +1,697 @@
+---
+title: "Research Comp: Paul"
+author: "Paul Harmon"
+date: "3/26/2019"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+    
+mainfont: Calibri
+header-includes: 
+   \usepackage{graphicx}
+   \usepackage{float}
+   \usepackage{booktabs}
+   \usepackage{fancyhdr}
+   \pagestyle{fancy}
+   \setlength\headheight{28pt}
+   \fancyhead[L]{\includegraphics[width=5cm]{Images/MSU_logo.jpg}}
+   \fancyfoot[LE,RO]{PH Comps}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#libraries the packages I need
+library(readr);library(ggplot2);library(dplyr)
+library(magrittr);library(tibble);library(pander)
+
+library(tidyr); library(knitr)
+library(tibble);library(corrplot);library(readxl)
+library(beanplot);library(lme4);library(lmerTest)
+library(emmeans);library(car);library(ggpubr);library(effects)
+library(fanc);library(psych)
+```
+
+
+# Logistical details:
+
+* Resources: For this exam you may use any textbooks or course materials. You are also free to use any publicly available materials that you might come across in a research setting; however, all writing must be original and all reference materials must be cited.
+
+* Research Articles: PDF copies of all research articles mentioned in the questions will be provided.
+
+* Length of answers: Suggested page lengths are provided for some questions, note these refer to default settings (12 point font with double spacing). These page lengths are approximate and for your guidance; deviations in answer length are acceptable.
+
+* Computer Code and Reproducibility: Please turn in all relevant computer code to reproduce your results.
+
+* Time: This part of the exam is meant to take two days - approximately 16 hours to complete.
+
+* Advice: Be sure to adequately justify your answers and appropriately reference any sources used. Try to focus your answer less on technical details and more on showing your ability to think critically, put ideas together, and clearly articulate your thoughts in a limited amount of time. Contact Mark Greenwood
+(greenwood@montana.edu) with any questions.
+
+
+# Part I: Penalized EFA and SEM
+
+1) **Describe "regularization" in general. Then discuss a situation or two where regularization might be useful and which types of regularization might be considered in those situations and why. [1 page]**
+
+Consider the standard linear model $Y = \textbf{X}\beta$. Under a certain set of assumptions in the Gauss-Markhov theorem, the Least-Squares estimator from such a model is a best-linear-unbiased-estimator, where “best” means that the OLS estimator has the lowest variance among unbiased estimators.  A common theme in statistics is the variance-bias tradeoff, by which one might accept the use of a biased estimator to substantially reduce the variance in that estimate. An entire field of statistics: Bayesian statistics, is built on this concept – informative prior distributions on parameters typically “shrink” (i.e. bias) an estimate but tend can produce less model error. 
+
+Moreover, in any setting involving multiple features, there is likely to be shared information between those features.  Multicollinearity, then is a problem that plagues even moderate-dimensional problems. As noted by Kuhn and Johnson (2013), “Combatting collinearity by using biased models may result in regression models where the overall MSE is competitive with” and, quite frankly, substantially better than, unbiased OLS estimates. 
+
+Regularization, then, is a technique by which a bias is imposed by adding a penalty to the objective function of a statistical model that controls for model complexity.  In a regression setting, ridge and lasso techniques add a l2 or l1-norm penalty, respectively, to the SSE calculation to be minimized, biasing the OLS coefficients by shrinking them towards 0 (or, in the case of the lasso, all the way to 0).   Hoff (2009) illustrates that a Bayesian model does this in an even more intuitive fashion – the prior distribution pulls the posterior parameter expectation away from the data value (sample statistic) and towards the prior parameter (like $\mu$). However, the discussion of Yamamoto et al (2016) indicates that there are meaningful differences between the Bayesian treatment and regularization via non-convex optimizers such as MC+, so it may not be possible to directly compare a frequentist and Bayesian version of regularized models. 
+
+Several situations arise where regularization might be useful. Consider a clustering problem involving pea plants that have been measured at 300 genetic markers. It might be useful to consider regularizing the number of variables used in the clustering with a lasso penalty so that, say, only 15-20 features are used to create clusters.  In a regression model to predict house prices, it may make sense to take advantage of the shared information between collinear features without explicitly removing them from the model, so a ridge penalty might make sense.  Finally, in functional data analysis, regularization can be used to smooth an estimated spline by adding a roughness penalty that allows the smoother to not hit every data point (Ramsay and Silverman, 2005). 
+
+
+2)**Write out the typical EFA and CFA models using notation either in one of the following papers or that we used in STAT 537, defining the components in them. Discuss the differences between EFA and CFA. When would you use one versus the other? You can use an example from your own work or another example. Try to motivate this with a data set that you can use for later questions that both EFA and CFA could be considered even if one is more likely to be of interest than the other. The data can be simulated or real. [1 page plus figures/tables]**
+
+The typical Exploratory Factor Analysis and Confirmatory Factor Analysis models are written out and described below. I technically use the notation of Hirose and Yamamoto (2013) but it is roughly the same as that found in Everitt and Hothorn (2010).  The model is given as: 
+
+$$ X_{px1} = \mu_{px1} + \Lambda_{pxm} F_{mx1} + \epsilon_{px1} $$ 
+
+In the above, X is a px1 vector of values,  $\mu$ is a px1 vector of means with some variance-covariance matrix $\Sigma$. F is a vector of loadings and $\Lambda$ is a pxm matrix of factor loadings. To be clear, the loading $\lambda_{i,j}$ is the loading of the $i^{th}$ observation onto the $j^{th}$ latent factor. Finally, we assume that $\Phi_{mxm}$ and $\Psi_{pxp}$ are the variance-covariance matrices of $F$ and $\epsilon$, respectively. Factor models are made clearer in matrix notation, so I'll show that below: 
+
+```{r formula, echo=FALSE, out.width = '50%', fig.align = 'center',eval = TRUE}
+knitr::include_graphics("Images/formula.png")
+
+```
+
+Fundamentally, the differences between CFA and EFA are largely driven by the context in which they are used. If one were faced with a survey dataset (or some set of manifest variables) with the goal of developing latent scales to describe unmeasured factors, they might use an EFA model to assess the existence of factors.  EFA would answer questions such as "how many latent factors are represented by these manifest variables?" and "how are the manifest variables related to each other and to each factor?" 
+
+On the contrary, properly applied Confirmatory Factor Analysis implies that a latent factor model has been specified before the data are examined. Typically, this sort of model makes sense in contexts such as psychometrics or econometrics, where theory-driven latent models are empirically tested via surveys, etc. These also make sense in iterative research, where previous work may inform the CFA model to be used in the next paper/research project.  It also makes sense that one might create a latent scale in an exploratory analysis (EFA) and then apply CFA to a new dataset to test that scale. 
+
+I recently ran into a good example of CFA in working at the Office of Planning and Analysis, which helped organize the HERI Survey of Campus Climate. Basically, the survey asked questions about whether respondents felt safe/valued/etc. on campus, and whether they had witnessed things like discrimination,etc.  HERI is analyzed each year, so their previous report contained a list of factors found in the previous survey, which contained different schools than in 2016 (the year MSU participated). In that case, it made sense to utilize the factor model that HERI had already established by using CFA to map the survey items to the latent factors and test model fit.  I would use these data in this example, but given their sensitive nature, I instead opted to go with a more canonical example. 
+
+Hildreth (2013) explored an example from a paper by Mardia, Kent, and Bibby (1979) in her doctoral dissertation; these data provide an interesting application of CFA (and a nice extension to more general SEMs). The dataset is previewed in Table 1. The data refer to $n = 88$ student's test scores across five subjects where two tests were open book and the other three were closed book. Dr. Hildreth (2013) points out that these data are typically analyzed with a 2-factor model, one for open and the other for closed book. It makes sense to use CFA for this because the goal is to test whether or not the open and closed-book exams load differently onto separate factors that could be construed as latent functions of exam type. Fortunately, the data are available in the MVT package in R.  Note EFA could also be used on this dataset, although it has been worked on enough that CFA probably makes more sense. 
+
+```{r}
+library(MVT)
+data(examScor)
+set.caption("First rows of examScor dataset.")
+pander(head(examScor))
+```
+
+
+\newpage
+3) **For this question, we will explore sparse exploratory factor analysis as discussed in Hirose and Yamamoto (2015), which I will call HY2015, and compare that to two papers we have discussed previously, regularized SEM as described in Jacobucci, Grimm, and McArdle (2016), JGM2016, and Jacobucci (2017 on ArXiv), J2017.**
+
+a) **What are some reasons that regularization is of interest in EFA? In CFA? What is similar and what is different about penalized estimation in these two situations? [0.75 page]**
+
+
+In any factor analysis model, there are several issues that can be solved with regularization. For one, in datasets that involve more predictors than observations ($p>n$ setting), methods that reduce the dimensionality of the data in a reasonable way are necessary to make factor analysis possible. This is discussed in a later question in more detail. 
+
+ Consider a gene expression model much like the one examined in West (2003) or by Carvalho et al (2012). In either case, the goal of the factor analysis is to map only small (i.e. useful) number of observed genes to a given factor (i.e. a latent biological structure/phenomenon).  In those two instances, regularization was achieved via careful choice of shrinkage priors on the factor loadings to induce sparsity, but in the same vein, a lasso could achieve much of the same goal. 
+
+In EFA, recall that the goal is to explore a series of factors and "investigate the relationship between manifest variables and factors without making any assumptions about which manifest variables are related to which factors" (Everitt and Hothorn, 2011). Much like a linear regression problem, an EFA might benefit from removal of some of the noisier features to map manifest variables to latent factors. Regularization would penalize the loadings of each variable to a factor, removing the less important ones entirely (assuming you are using something that penalizes all the way to 0, like lasso).  This would result in a parsimonious mapping of manifest features to the latent traits with which they are most strongly tied. 
+
+CFA, on the other hand, is a special case of Structural Equation Modeling (Everitt and Hothorn, 2011). In Hildreth (2013), the CFA model is described as akin to the measurement model in SEM, the model by which latent factors are mapped to observed manifest variables. Regularization in this context would remove (or shrink) the loadings for features that did not play a role in measuring the latent factor. Since CFA models test known a priori theories, regularization may be construed as a tool to inform how tightly measured variables are related to unobserved latent theoretical constructs (i.e. the factors). 
+Perhaps more succinctly, I think of regularization in CFA as something of a substitute for hypothesis tests for "significance" of a given loading, in the same way that lasso zeroing out a coefficient in a linear model might be taken as an alternative to significance tests for that $\beta$ coefficient. 
+
+
+b) **In the two approaches, they report similar but slightly different versions of penalized functions to optimize (equation 7 in HY2015 and equation 6 in JGM2016). Report the two equations and explain the differences. I think that if you used the same penalty (something simple like lasso) for either EFA or CFA and appropriately tuned using either HY2015's eq 7 or JGM2016's eq 6 for a given method (EFA or CFA), that they would give you the same answer. Do you agree or disagree? Provide your thoughts in either direction. [0.75 page]**
+
+The equations reported by the two papers are given below. In both, $P(\cdot)$ is a penalty function.   
+
+In Hirose and Yamamoto (2015), they describe the problem as being maximized by the penalized log-likelihood, where $\rho >0$ is a regularization parameter.: 
+
+$$l_p(\Lambda,  \Psi) = l(\Lambda,  \Psi) - \sum_{i = 1}^{N}\sum_{j=1}^{N} \rho P(|\lambda_{ij}|)$$
+This is further expanded when considering the form of the likelihood given in equation 1. Note that I'm defining $C$ to be the sample covariance matrix whereas these authors use $S$ in the paper. 
+
+$$l_p(\Lambda,  \Psi) = -\frac{N}{2} [{plog(2\pi + log(\Sigma)) + tr(\Sigma^{-1}C)}]$$ 
+
+In equation 6 in Jacobucci et al (2016), the ML cost function is written slightly differently - I'm combining the form in Equation 5 into the Equation 6. In this case, the regularization parameter is $\lambda$.  
+
+$$F_{ML} = log(|\Sigma|) + tr(C * \Sigma^{-1}) - log(|C|) - p + \lambda P(\cdot)$$ 
+Assuming that the same penalty were used, these do appear to give us a similar, if not exact, answer. Carrying out some math on the piece from Hirose and Yamamoto (2015), we can get to something that looks pretty similar to the loss function in the SEM framework. I'm dropping the $\lambda_{ij}$ and re-writing the penalty parameter as $\lambda$ to match notation types. 
+
+$$l_p(\Lambda,  \Psi) = -\frac{N}{2} [{plog(2\pi) + log(\Sigma) + tr(\Sigma^{-1}C)}] - N\sum_{i = 1}^{N}\sum_{j=1}^{N} \lambda P(|\cdot| )$$ 
+My sense of things is that the signs differ because Jacobucci is trying to minimize logloss, whereas Hirose and Yamamoto talk about maximizing the log-likelihood. Even if we flip the signs, there seem to be some minor differences between the formulas. However, the goal is to optimize with regard to the model parameters, so in that case, the terms that differ should have partial derivatives of 0; in both cases, the optimum value should be a function of the $log(\Sigma)$, the trace of the covariances, and the penalty term. So I think it is reasonable to expect that you would end up in the same place.  
+
+c) **The methods of HY2015 are available in the `fanc` R package (Hirose, Yamamoto, and Nagata, 2016; also discussed in Yamamoto, Hirose, and Nagata, 2017). It provides options for MC+ (type= "MC") and "prenet" (prenet is from a different paper and we will ignore that for now). What results do HY2015 use to support a focus on MC+? How do the results for MC+ from J2017 compare to these results? [0.75 page]**
+
+The results used by HY2015 to justify the focus on the MC penalizer are presented in Example 3, where the lasso was directly compared to the non-convex MC penalizer. In their example, they plotted the solution paths of the lasso and the MC with $\gamma = 1.96$; note that a value of $\gamma$ close to 1 provides a hard threshold operator rather than the soft threshold of the lasso (associated with $\gamma = \infty$). The solution paths show that for the lasso, no value of tuning parameter $\rho$ can recover the true nonzero elements. For the MC penalizer, there is an entire range of $\rho$ values for which the penalizer selects the correct model, meaning that the MC penalizer outperformed the lasso in this particular case. 
+
+Jacobucci (2017) compared different types of penalties in an example of a latent growth curve model, including standard ridge, lasso, and ML versions with other penalties including an adaptive lasso, non-convex SCAD, and MC-Plus penalizers. The data were simulated to have two large effects, two small effects, and 16 true 0 effects. Further, the $\gamma$ parameter for MCP was fixed at 3.7. Interestingly, the MCP performed poorly relative to the lasso, although it only identified one false effect (lasso mis-identified 2). The MCP model did end up with a lower BIC than either the lasso or MLE, but the results for Jacobucci were not as effusive as those in the sparse factor analysis models of Hirose and Yamamoto (2014). It is possible that these results would have been improved if they had allowed $\gamma$ to vary instead of fixing it. 
+
+
+d) **What is a relaxed lasso as discussed in `regsem` (Jacobucci, Grimm, Brandmaier, Serang, and Kievit, 2019)?  In `fanc`, the MC+ penalty can provide the lasso penalty - when does that happen? But HY2015 do not discuss the relaxed lasso. Why can `regsem` easily implement the relaxed lasso but it is not a trivial extension of the methods for `fanc`? [0.5 page]**
+
+The relaxed lasso model is discussed in Jacobucci (2017) as part of a comparison of different types of penalities available in the `regsem` package. He notes that "the lasso estimation of the true effects was attenuated in comparison to other...methods... necessitating the use of a two-step relaxed-lasso method"(2017). The original paper on relaxed lasso by Meinshausen (2007) describes the relaxed lasso as a method for separating out its two functions: 1) **Regularization** and 2)**Feature Selection**.  In some sense, one could think of the relaxed lasso as a method by which lasso is performed twice, once to sort out the noisiest group of features and the second time to shrink the remaining estimates. In the second model, I would consider using ridge penalties if I felt that I had performed adequate feature selection in the first step. 
+
+The MC penalty that provides the lasso penalty in the `fanc` package is actually a more generalized penalizer than a pure lasso. Unlike the pure l1-penalization precure, the MC is a non-convex penalizer that involves two parameters, $\gamma$ and $rho$. For values of $\rho >0$, when $\gamma$ approaches $\infty$, the MC penalty is equal to the lasso. 
+
+The MC penalty is discussed by Hirose and Yamamoto (2015) as being a flexible penalizer that, when properly tuned, can yield a soft-thresholding operator (lasso penalty) as well as a hard threshold operator. In relaxed lasso, the $\phi$ parameter controls the 'hardness' of the thresholding parameter (Meinshausen, 2006) - this indicates that in some sense, relaxed lasso may be a way to compete with the non-convex MC penalizer.   Since `fanc` relies on a choice of two non-convex penalties (MC or SCAD), and does not explicitly allow a traditional lasso penalty (only via the special case of MC), it does not easily implement the additional penalty term to the objective function ($\phi$) nor does it allow for easy two-step implementation of feature selection followed by regularization.  Put more plainly, it seems that the methodology under the hood of `fanc` is designed to do what `regsem` does in a two-stage process in a single stage. 
+
+
+e) **For your example, perform regular EFA, raw ML and varimax rotated ML, and penalized EFA (tuned using a criterion that they suggest). Pick a reasonable number of factors for the situation and hold that constant across the methods (you do not need to spend too much time trying to find the "correct" number of factors). Compare the results and discuss which you might use here. Try to include diagrams of the models to make comparisons easier. (Note: the `plot` option in `fanc` maybe helpful for one of the models.) [1 page of text plus figures/tables]**
+
+The data utilized by Hildreth (2013) are analyzed in several different ways. Prior to analysis, I conducted a little bit of exploratory analysis to get a sense for the different scores on each exam. The beanplots in Figure 1 show the mean scores (wide black ticks), individual scores (white ticks), and estimated distributions (blue shapes) of exam scores by each course exam. Recall that the two exams that were taken as closed-book tests were Mechanics and Vectors, while the other three courses were open-book exams. There are some slight differences in the mean and variability of each group, but nothing too dramatic. 
+
+```{r bpExamscore, include = TRUE, fig.cap = "Beanplots of scores on each exam. Mechanics and Vectors were closed book tests.", eval = TRUE, out.width = '80%' }
+#head(examScor)
+beanplot(examScor, las = 2, main = "Beanplots of Scores", 
+         col = c("dodgerblue2","white"), cut = TRUE)
+
+```
+
+Typically, a factor analysis on these data is performed with two factors, so I hold that value constant for all the versions of factor analyses fit below. Prior to running any of the analyses, I think the traditional method may be just as effective here because there are only 5 measured variables in the data - it may make more sense to utilize the penalized version of this in higher-dimensional problems. Note that these data do have some issues with influential points and outliers (particularly observation 81), as overviewed by Hildreth (2013) and outlined in  Tanaka et al (1991). However, I did not remove them from the dataset and instead opt to keep these concerns top of mind as I interpret the results. 
+
+Interestingly, I found that the two factor solution did not appear to be a great fit for the data - even in the CFA I ran, most of the model metrics did not indicate great model fit. As it pertains to the different EFA methods, I tried the ML without rotation, the ML with varimax rotation, and a penalized version. I also include a principal-axis-based version for reference. 
+
+The penalized verion of the EFA uses a $\gamma = Inf$ so it performs the soft thresholding lasso penalizer; I chose the combination of tuning parameters that minimized Akaike's An Information Criterion (AIC), resulting in a $\rho = 0.129$. 
+
+Interestingly, most of the models do not fit loadings onto the second factor. The principal axis and raw ML versions assign large loadings from all the exam scores to the first factor. For the raw ML version, the "closed-book" exams load positively onto the 2nd factor whereas the "open-book" exams load negatively. The varimax-rotated version loads more evenly than either of the other versions, with large loadings for the in-class exams going towards the first factor and mapping the in-class exams to the second factor. 
+
+The penalized version was chosen based on a lasso penalizer and optimized based on AIC. I show both the path diagram and the heatmap of the loadings for the model (or, technically, one pretty close to the optimized version - the sliders are not granular enough for me to match the selected model exatly). The AIC-selected penalized version loads the manifest variables all to the first factor, with the in-class exams providing the most weight to the second factor. One open-book exam, Algebra, gets mapped to the second factor but it has a much smaller loading than the closed-book exams; the other two open-book manifest variables are zeroed out by the penalizer. Table 2 gives the loadings for each of the models; Figure 2 shows the path diagrams for the ML, rotated, and PA versions of the model. The regularized FA model is shown in two ways - a heat map in Figure 4 and a path diagram in Figure 3. 
+
+Given what I know about this dataset, the varimax-rotated FA appears to most closely match the results that I expected to get; however, the penalized version could be selected with a combination of $\rho$ and $\gamma$ that provides a similar solution. Given that the AIC-selected solution did not achieve this, I would stick with the two-stage ML and varimax-rotated solution here. 
+
+```{r models_fit, eval= TRUE}
+
+#Exploratory Factor Analysis: Raw, ML, Varimax ML, Penalized
+library(psych)
+#Raw principal axis version
+fa_raw <- fa(examScor, nfactors = 2, rotate = "none", fm = "pa")
+## Maximum Likelihood versions
+fa_ml <- fa(examScor, nfactors = 2,rotate = "none") #EFA with ML
+fa_vm <- fa(examScor,nfactors = 2, rotate = "varimax") #ML with varimax rotation
+
+#Penalized Version
+X <- examScor %>% as.matrix()
+fa_pen <- fanc(X, factors = 2) #runs in about 10 seconds
+out(fa_pen, rho = 0.1, gamma = Inf)
+fa_select <- select(fa_pen, criterion = "AIC", gamma = Inf)
+```
+
+```{r fa_diagrams, fig.align = 'center', fig.cap = "Diagrams created by the different factor analyses.", eval = TRUE}
+par(mfrow = c(3,1))
+fa.diagram(fa_raw, main = "PA Version")
+fa.diagram(fa_ml, main = "ML Not Rotated")
+fa.diagram(fa_vm, main = "ML Varimax")
+```
+
+
+```{r, eval = FALSE, fig.cap = "Solutions for penalized version depending on tuning parameter values."}
+#code to create the static images below
+plot(fa_pen, type = "heatmap")
+plot(fa_pen, type = "path")
+```
+
+```{r penalizedlasso, echo=FALSE, out.width = '80%', fig.align = 'center', fig.cap = "Path diagram from penalized EFA.", eval = TRUE}
+knitr::include_graphics("Images/penpath.png")
+
+```
+
+```{r lassoheat, echo=FALSE, out.width = '80%', fig.align = 'center', fig.cap = "Heatmap from penalized lasso EFA.", eval = TRUE}
+
+knitr::include_graphics("Images/penheat.png")
+```
+
+```{r, eval = TRUE}
+#table of loadings
+
+fa_ml$loadings
+fa_vm$loadings
+fa_select$loadings
+```
+
+
+
+f) **Generate or find an example with more variables than observations ($N \ll p$). Perform a penalized EFA on this data set and discuss the results. What happens when you try to do a typical EFA with $N \ll p$? [1 page plus figures/tables]**
+
+West(2003) explores a dataset first utilized by Osborne et al.(1984) and Brown et al.(2001). The data refer to 72 observations of biscuit dough made from recipes with varying levels of fat, water, sucrose and flour that were subjected to NIR spectroscopy to assess how well the Spectroscopy could measure the composition of the aforementioned ingredients in each batch of dough. The problem is high-dimensional in that there are substantially more NIR spectrum measurements (700) than observations (72). The data pertain to spectrum measured between 1100 and 2498 nm at 2nm wavelengths; there are 700 spectra and 72 observations on which the spectra are measured. 
+
+The data are plotted in Figure 5. 
+
+```{r cookiedat, fig.cap = "Scaled Spectra at each wavelength.", eval = TRUE, message = FALSE, warning = FALSE}
+suppressMessages(library(ppls))
+data(cookie)
+X <- scale(as.matrix(cookie[,1:700]),center = TRUE,
+           scale = FALSE)#NIR spectra
+Y <- as.matrix(cookie[,701:704]) #I will likely ignore these
+
+#plot(X)
+## Just produces a plot of scaled spectra
+wavelength <- seq(1100, 2498, by = 2)
+plot(wavelength, X[1,], type ="l", main = "Scaled Spectra", 
+     ylim = c(-.3,.34))
+for(j in 2:nrow(X)){
+  lines(wavelength,X[j,], col = j)
+}
+
+```
+
+West notes that his Bayesian factor analysis model identifies 16 factors in the model, so I chose 16 as a the baseline to work with in this analysis.  Below, Penalized EFA is performed on the dataset. 
+```{r fa_pen, cache = TRUE, eval = TRUE}
+fa_pen <- fanc(X,factors = 16, type = 'MC')
+#this code takes about 3 hours to run
+```
+
+```{r}
+#output for fixed tuning parameters
+out.1 <- out(fa_pen, rho=0.1, gamma=Inf)
+#select a model via model selection criterion
+model_select <- fanc::select(fa_pen, criterion="BIC", gamma=Inf)
+model_select$loadings[1:15,1:6]
+```
+
+The loadings matrix is quite large in this case, so I did not include the entire thing. Instead, I printed out the first 15 rows and 4 columns, and show a heatmap of the loadings matrix in Figure 6. The effect of the lasso penalizer is obvious in that the loadings for some facator 1 for observations 7 to 10 are shrunk to 0. Similarly, most of the loadings are shrunk to 0 for the second factor.  Moreover, the the loadings are all quite small; this is likely an effect of the regularization. Recall that the data are scaled spectra at a 2mm distance, so it makes some sense that the regularization should occur in chunks.  You can see that the majority of the loadings are taken all the way down to zero, especially for Factors 9 - 16. 
+
+```{r plotmat, fig.align='center', fig.cap = "Heatmap of the loadings. Green values are zeroed out by the lasso.", message = FALSE, warning = FALSE}
+suppressMessages(library(plsgenomics))
+matrix.heatmap(model_select$loadings, main = "Loadings from biscuit data")
+```
+
+I suspect that the 16 factor solution is probably a more complex model than necessary. Since all the loadings for the 9-16th factors were zeroed out, this may indicate evidence that somemthing like an 8 factor model would be sufficient.  While there are goodness of fit statistics that can be calculated, these would make more sense to assess in a CFA framework. 
+
+When regular EFA is attempted on the dataset, it returns an error that the "system is computationally singular". It will not run in a $p>n$ setting - note that `factanal` runs on a subset of the data as long as the dimensionality of that subset is less than $n = 72$. 
+
+```{r, error = TRUE, eval = TRUE}
+fa_16 <- factanal(X, 16, rotation="varimax")
+
+#for reference
+fa_sample <- factanal(X[,1:71], 16, rotation = "varimax") #runs
+fa_sample <- factanal(X[,1:72],16,rotation = "varimax") #throws the error
+
+```
+
+
+\newpage
+# Part II: Mapping high dimensional data
+
+4) **Focus on van der Maaten's papers related to t-SNE and Witten and Tibshirani's 2010 paper related to `sparcl` (Witten and Tibshirani, 2018) to answer the following questions:**
+
+a) **Explain the purpose of t-SNE and how it is used, including an example to illustrate its use and interpretation. [1 page plus figure(s)]**: 
+
+In statistics, high-dimensional data problems often involve situations where there are more features in the data than there are observations (the $p>n$ problem), or even when there are enough observations, most of the variables contribute noise rather than signal to the process.  Dimension-reduction techniques focus on identification of a “smaller fundamental set of independent variables… which determine the values of the original p variables”(Hotelling, 1933).  This concept that a narrower set of $k<p$ features that may contain the majority of the information in the original p features drove the development of PCA, MDS, Sammon Mapping, and other multivariate mapping techniques.
+
+High-dimensional data visualization, on the other hand, seeks to find ways to visualize more than 2 or 3 dimensions of data without fundamentally changing the underlying scales of interest; a good example of this idea can be found in  Chernoff faces (Chernoff, 1973). 
+
+T-distributed Stochastic Neighbor Embedding (t-SNE) seeks to solve both problems simultaneously by identifying a reduction of the data to 2 (or 3) dimensions and producing a 2 (or 3)-dimensional map, with meaningful groupings from the high-dimensional space preserved in the low dimension.  In plain English, if observations are similar when using all the features, they should be mapped close together in the resulting t-SNE map.  
+
+More technically, t-SNE minimizes the symmetricized Kullback-Leibler divergence between two joint probability distributions, P_{ij} and Q_{ij}. Without getting too technical here, P can be interpreted as a joint probability (using the full feature set) that a given observation (i) would choose another observation (j) as a neighbor, under the assumption that P is distributed normally and centered at i. This is illustrated in Figure 7.  The Q similarity operates in the same way, except that it uses a heavier-tailed t-distribution with 1 degree of freedom to estimate the joint probability using only a subset of the features.  If the lower-dimensional mapping  is faithful to the high-dimensional setting (the actual data), the KL-divergence between P and Q will be small (van der Maaten, 2008), so t-SNE seeks to minimize this for all the pairs of datapoints. 
+```{r imageSNE, echo=FALSE, out.width = '80%', fig.align = 'center', eval = TRUE, fig.cap = "T-SNE similarity diagram, assuming a gaussian distribution."}
+knitr::include_graphics("Images/sne_diagram.png")
+```
+
+T-SNE is surprisingly easy to implement, with only the choice of a perplexity parameter necessary to run. Perplexity can be thought of as a rough estimate of the expected number of neighbors in each group. Van der Maaten (2008) notes that t-SNE is fairly robust to changes in perplexity values; however, I have not found this to be the case.  Below, I implement t-SNE with the package Rtsne on a dataset of NBA Rookies drafted in 2017, with a perplexity of 10. I chose 10 because the dataset is relatively small and I expected to see only two groups based on previous research with PCA.  
+
+It is useful to scale the data prior to running t-SNE (in part because the default setting in Rtsne is to run PCA in the background and then t-SNE the already dimension-reduced scores).  The plot of the 2-D t-SNE map is shown below in Figure 8.  Care should be taken when interpreting these maps; groups of observations have meaning but positions of groups do not. Indeed, based on the random seed chosen, positions of groups may differ substantially across runs. 
+
+T-SNE does not offer much in the way of interpretation or creation of new latent scales to assess performance – the axes of variation (X and Y) do not have meaning in an interpret-able sense.  That being said, the groupings do have meaning. In this case, t-SNE grouped the players who contributed meaningful statistics to their teams in their rookie year in the bottom left corner (note Donovan Mitchell, Jayson Tatum, and Ben Simmons were all in the running for rookie of the year in 2018). 
+
+```{r tsne, include = TRUE, eval = TRUE, fig.cap = "t-SNE plot of NBA rookies from 2017 season."}
+nba <- read.csv('Data/na.csv', header = TRUE)
+suppressMessages(library(Rtsne))#;library(tsne)
+
+nba.dat <- nba[,-c(1:3)]
+
+#using Rtsne
+set.seed(32219)
+rt1 <- Rtsne(nba.dat, dims = 2, initial_dims = 20, perplexity = 10)
+makeplot <- function(TSNEobject, names){
+  Y <- data.frame(TSNEobject$Y)
+  names(Y) <- c("dim1","dim2")
+  p <- ggplot(Y) + geom_point(aes(x=dim1, y = dim2), 
+                              color = "hotpink", size = 2) + 
+    theme_bw()
+  p + ggtitle("TSNE: NBA Rookies") + 
+    geom_text(aes(dim1,dim2, label = names))
+}
+
+makeplot(rt1, nba[,3])
+
+```
+
+Because of the difficulty of interpretation and black-boxed nature of t-SNE, I would not use this method as a replacement for PCA or a latent-variable model. I like t-SNE for exploratory analysis primarily. 
+
+Additionally, I came across a use case where I had the ability to add additional features to a logistic regression model but due to software constraints, the model had a hard cap on the number of features that could be used. 
+
+I could only add a single feature to the model (I had 722 to choose from) – the goal in this case was to increase predictive ability of the model without necessarily creating interpretable features to be used.  One use of t-SNE might have been to take the 722 feature set and create a 2-D mapping, and then apply model-based clustering to the map. Those clusters could then be added to the model as an additional single feature that contains as much information (perhaps more than would be available if PCA were used) as possible from the original 722 feature set.  
+
+
+
+```{r, eval = FALSE, includ = FALSE, echo = FALSE}
+#ASU Lead data
+
+asu <- read_csv('Data/ASU 3rdparty Data Overlay.csv')
+dim(asu) #721 feature set
+
+#a little bit of pre-processing to remove some missing data
+card <- function(x) {length(unique(x))}
+cardiB <- lapply(asu, card)
+low_card <- which(cardiB == 1)
+high_card <- which(cardiB > 100)
+
+miss <- function(x){length(which(is.na(x)))/length(x)}
+missing <- sapply(asu, miss)
+missing_vars <- which(missing > 0.5)
+
+# dplyr to reduce the number of variables we have 
+asu_red <- asu %>% dplyr::select(-c(low_card, high_card, missing_vars))%>% 
+  select(.,-contains("Date"))
+asu.df <- asu_red %>% lapply(., as.factor) %>% lapply(.,fct_explicit_na) %>% as.data.frame() 
+library(forcats)
+
+fct <- Rtsne(asu.df[sample(1:31822,1000),])
+
+
+```
+
+
+
+
+b) **Report and explain result 15 (p 719) in Witten and Tibshirani (2010). Make sure to explain how this provides "sparsity" and what that means in terms of the original variables and the distance matrix used for clustering. [0.75 page]** 
+
+Result 15 refers to the application of sparse clustering to hierarchical clustering, which segregates the data into groups in a different way from the main focus of the paper, K-means clustering. Interestingly, most of the more recent work in this field has been done on the K-means version of sparse clustering rather than in sparse hierarchical clustering. As noted by Kondo, et al(2016), sparse K-means "cleverly exploits the fact that commonly used dissimilarity measures can be additively decomposed into $p$ terms, each depending on a single variable." This is evident in results 4 and 5 in Witten and Tibshirani (2010), which note that many clustering methods can be expressed as a form: 
+$$\underset{\Theta \in D}{Max} \sum_{j=1}^{p}f_j(\textbf{X}_j,\Theta)$$ 
+As noted, based on this ability to factorize the objective function by each feature, they are able to additively implement weights that apply to each factor, $w_j$. The new optimization problem in sparse clustering algorithms takes a general form, with $w$ subject to an $l_1 < s$ constraint (s is a tuning parameter): 
+
+$$\underset{w, \Theta \in D}{Max} \sum_{j=1}^{p}w_j f_j(\textbf{X}_j,\Theta)$$ 
+The above forms are a general form for the optimization, but this leads us to the framework of hierarchical clustering, which agglomerates observations into groups based on producing dendrograms that must be pruned at a given location. Witten and Tibshirani note that hierarchical clustering requires as input a dissimilarity matrix $\textbf{U}_{nxn}$, resulting in an optimization problem that seeks to minimize **U** subject to specific constraints ($\sum_{i,i'}\textbf{U}^2 \leq 1$), as shown below: 
+$$\underset{\textbf{U}}{Max} \sum_{j}\sum_{i, i'}d_{i,i', j}\textbf{U}_{i,i'}$$ 
+Results 14 and 15 follow those of 4 and 5 in that they allow for the distance matrix to be penalized by down-weighting the distance matrix for features that do not contribute to the cluster solution. Result 15, the optimization for sparse hierarchical clustering, results naturally from this implementation of the penalty, with $w_j$ subject to the same constraints as above: 
+
+$$\underset{\textbf{U}}{Max} \sum_{j}w_j\sum_{i, i'}d_{i,i', j}\textbf{U}_{i,i'}$$ 
+Sparsity is induced because the weights are allowed to vary for each feature in such a way that the weights for "noise" features can be shrunk to 0, and the weights for "signal" features can be retained (and kept relatively large). Looking at their algorithm for doing sparse hierarchical clustering, the original distance matrix is repeatedly updated based on this re-weighting process and then is used as an input to the hierarchical clustering method. 
+
+
+c) **In t-SNE, discuss the role of the distance matrix among the original observations and how it is compared to the distances of the lower-dimensional points. [0.75 page]**
+
+In t-SNE, the distance matrix among the original observations (typically Euclidean) can be input instead of the raw data (however, this requires the Matlab implementation and the `tsne_d.m` function.) More importantly, the distance matrix of the original observations gives the t-SNE algorithm what it needs to calculate the P_{ij} terms. 
+
+Recall that t-SNE seeks to calculate two metrics of similarity, P (in the original data space, or high-dimension), and Q, in the low-dimensional space. They are defined below: 
+
+$$p_{ij} = \frac{p_{j|i} + p_{i|j}}{2n}$$ \
+$$q_{ij} = \frac{(1 + ||y_i - y_j||^2)^{-1}}{\sum_{k \neq l}(1 + ||y_k - y_l||^2)^{-1}}$$ 
+n the high-dimensional space P, the similarity metric still relies on a normal distribution, as in tradition SNE. Typically the individual $p_{i|j}$ is defined as the probability that $x_i$ would choose $x_j$ as a neighbor, with $\sigma_i$ as the variance of the Gaussian distribution (in the high-dimensional space) centered at the $i^{th}$ datapoint. The distance matrix of the original data is used to calculate the distances between each $x_i$, $x_j$, and $x_k$. 
+
+$$p_{j|i} = \frac{exp(-||x_i - x_j||^2/2\sigma_i^2)}{\sum_{k \neq i}exp(-||x_i - x_k||^2 / 2\sigma^2_i)}$$
+Recall that if the lower-dimensional representation closely matches the original data structure, Q should be a reasonable approximation of P. In t-SNE, the joint distribution of the Q's is calculated with a t-distribution, and the symmetricized Kullback-Leibler Divergence between P (which utilizes the original distance matrix) and Q (in the lower-dimensional space) is minimized over all the data points. Put simply, the algorithm is designed to take observations that have large distances in P and map them far apart from each other in the lower-dimensional mapping; conversely, for observations that are close together (i.e. small values in original distance matrix), they should remain close in the lower-dimensional mapping. 
+
+
+
+
+d) **Propose a general framework for regularization in the t-SNE algorithm, discussing where the regularization could happen, leveraging the previous discussions, and why this could be useful. Do not program this as this may or may not actually work and certainly would be complicated to optimize. Assume that minimizing the sum of KL-divergences optimizes a given t-SNE map. [0.75 page]**
+
+In t-SNE, there may be two different ways that regularization could enter the algorithm. The first, and probably easiest way, would be to do the procedure in a two-step algorithm not unlike some of the implementations of the relaxed lasso as discussed by Meinshausen (2006). In such a method, the first step would be to do some sort of feature selection via lasso-selection. In a regression setting, one could optimize the tuning parameter $\lambda$ for a regression problem and choose only the features with non-zero coefficients. 
+
+This might be akin to replacing the "whitening" process within t-SNE, in which PCA is run on the data, with a feature selection driven by the lasso.  Alternatively, regularized PCA methodology (such as sparse PCA discussed in Zou,et al.(2006)) could be used to combine the w. Application of sparse PCA instead of the traditional PCA (or none), or other sparse methods such as Regularized SEM/sparse FA in this step, might allow for the t-SNE algorithm to operate on a subset of less noisy features. Some options for dealing with regularization in t-SNE are overviewed in Figure 9.  
+
+However, these are two-step procedures that, while interesting and probably easier to implement, would not be as optimal as finding a way to penalize the objective function of the t-SNE algorithm itself. The method of penalizing the distance matrix directly utilized by Witten and Tibshirani (2010) may provide our best bet for a way to add regularization to the t-SNE algorithm. First, regularization makes sense really in the high-dimensional space P. Since the similarity metric, $P_{i}$, is really just a conditional joint probability distribution given datapoint $x_i$, this conditional distribution is just a (high-dimensional multivariate) normal distribution centered at $x_i$. My sense of things is that if we penalized certain features in a similar manner as to Witten and Tibshirani's method in sparse hierarchical clustering, we may be able to downweight the use of certain features in the calculation of the conditional probability in P. This might - perhaps only slightly - mitigate some of the problems associated with the Curse of Dimensionality that affect the Gaussian approximation in high-dimensional settings. 
+
+From there, I think the optimization would be quite similar. You would still attempt to make the lower-dimensional mapping Q look like the (penalized) high-dimensional similarity P, so minimizing the symmetric KL divergence would be the goal. If the regularization does a reasonable job of removing noise from the higher-dimensional space, this might actually speed up the optimzation process. That being said, I'm not sure that it's clear how reducing the number of features would affect the crowding problem in the lower-dimensional space. It may be possible that by reducing the number of features in the data, you actually remove some of the map separation between observations that are far apart.  
+
+```{r imageTSNE, echo=FALSE, out.width = '90%', fig.align = 'center', fig.cap = "Proposed methods for proceeding through the t-SNE algorithm, with regularized version shown on bottom path.", eval = TRUE}
+knitr::include_graphics("Images/tsnepropsal.png")
+```
+
+
+
+e) **Explore the potential for a sparse version of t-SNE. Do this by working with a data set with relatively clear structure on some variables and some that are not structured or related to that structure, performing t-SNE on it and then performing t-SNE just using the variables with clear structure. You can use your knowledge of which variables should be used to demonstrate this possibility. Note: I don't know if this will work, so use this as an opportunity to assess the potential for pursuing this as a research opportunity and it is OK to conclude that this may not be worth pursuing based on these initial results. [1.5 pages plus figures]**
+
+For exploration of a sparse version of t-SNE, I examined the UCI's repository of Wine characteristics. While many of these types of datasets are much more high-dimensional, this particular dataset has 13 features to consider. There are 3 classes of wine, and although I am not sure what they each class refers to, they are relatively distinct from each other. Figure 10 shows the pearson correlations between the features in the data.  
+
+```{r, eval = TRUE, message = FALSE, warning = FALSE, fig.cap = "Correlations of variables in the wine dataset."}
+wine <- read_csv("https://archive.ics.uci.edu/ml/machine-learning-databases/wine/wine.data",
+                 col_types = cols())
+
+colnames(wine) <- c('Class','Alcohol', 'Malic.acid', 'Ash', 
+                    'Alcalinity.of.ash' ,'Magnesium', 'Total phenols',
+                    'Flavanoids', 'Nonflavanoid phenols', 'Proanthocyanins',
+                    'Color intensity','Hue' 	,'OD280/OD315','Proline')  
+
+pander(head(wine)) #prints first few observations out
+
+#creates a correlation plot
+par(mar = c(1,1,3,1))
+wine %>% dplyr::select(., -Class) %>% cor() %>% 
+  corrplot(., order = 'hclust', type = 'lower', tl.cex = .7)
+
+```
+
+
+Figure 11 gives a t-SNE run on the entire wine dataset with all 13 features. The three wine types are pretty easy to distinguish, and t-SNE has very little difficulty parsing them out from each other.  
+
+The next step was to find a subset of features that contain the majority of the structure in the data. I used sparse k-means (as implemented in the `RSKC` package, not `sparcl`) to do the feature selection - a hacky method, I admit, but an easy way to do the lasso selection I need to do.  I plotted the indices of the nonzero features in Figure 12. For the purposes of this study, I don't really care that feature 7 (Total phenols) has the largest weight, rather, I'm only interested in using it as input to the t-SNE solution, shown in Figure 13.
+
+```{r, eval = TRUE, fig.cap = "Weights of each coefficient from the RSKC applied to the wine data."}
+wine.scale <- wine %>% lapply(.,scale) %>% as_tibble()
+
+ts1 <- Rtsne(wine.scale[,2:14], perplexity = 20, dims = 2, pca = FALSE)
+tsdat1 <- as_tibble(ts1$Y);colnames(tsdat1) <- c("X1","X2")
+tsdat1$Class <- factor(wine$Class)
+ggplot(tsdat1, aes(X1,X2)) + geom_point(aes(color = Class), size = 2) + 
+  ggtitle("T-SNE on All Features") + theme_bw() + scale_color_viridis_d() + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+suppressMessages(library(RSKC))
+rsk1 <- RSKC(wine.scale[,2:14], ncl = 3, alpha = 0.3, L1 = 2)
+plot(rsk1$weights, pch = 20, main = "Nonzero Weights by Feature Index")
+index.use <- which(rsk1$weights != 0)
+print(index.use) #only uses 6 of the features
+```
+
+
+```{r, fig.cap = "t-SNE on the lasso selected features from the RSKC function."}
+#now apply the t-SNE version of this
+suppressMessages(library(Rtsne))
+ts2 <- Rtsne(wine.scale[,index.use], perplexity = 10, dims = 2, pca = FALSE)
+tsdat2 <- as_tibble(ts2$Y);colnames(tsdat2) <- c("X1","X2")
+tsdat2$Class <- factor(wine$Class)
+ggplot(tsdat2, aes(X1,X2)) + geom_point(aes(color = Class), size = 2) + 
+  ggtitle("T-SNE on Lasso-selected Features") + theme_bw() + scale_color_viridis_d() + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Admittedly, I am not familiar enough with the data to know if, cannonically, any of the features contain a great deal of structure from which the t-SNE can learn. I can, however, modify the dataset by adding a number of additional fields that are completely highly uncorrelated with the feature set. Since there were six fields that were used in the lasso-selected clustering, I'll use those as a baseline and try several simulations. 
+
+My set of "structure variables" refers to those six features. Then, I added additional features to the dataset, all simulated from Normal distributions with mean 0 and standard deviation 1, since the data were previously scaled. 
+
+Since increasingly higher-dimensional problems may provide more noise (and thus more difficulty) for the t-SNE algorithm, I compared those solutions with 20 additional noise features, 100 additional noise features, and 1000 additional noise features to the t-SNE solution with only those 6 structure-features utilized.  The results are interesting: the t-SNE algorithm fails to recognize that the new features are uncorrelated and has a great deal trouble distinguishing those from those that do provide signal. It is unable to identify the groupings in this new dataset. Notice that in the 20-feature version, it is still able to distinguish some of the class 3 wines, but by the time the data are swamped with 100 noise features, t-SNE is unable to parse the groups out. The resulting maps are given in Figure 14. 
+
+```{r, eval = TRUE, fig.cap = "t-SNE runs with more noise features added in."}
+wine_baseline <- dplyr::select(wine.scale,index.use)
+wine_baseline$Class <- wine$Class
+
+
+#simulates data (standardized so that it matches scale)
+makeFakedata <- function(mean = 0,sd = 1){
+   fake.dat <- rnorm(nrow(wine),mean, sd)
+return(fake.dat)}
+
+
+### BUILDS A 20-variable feature set
+for(j in 1:20){
+  top <- ncol(wine_baseline)
+  wine_baseline[,top + 1]<- makeFakedata()
+    names(wine_baseline)[top + 1] <- paste0("Fake ",j)
+}
+## runs the t-sne and saves the plot
+ts3 <- Rtsne(wine_baseline[,-1], perplexity = 10, dims = 2, pca = FALSE)
+tsdat3 <- as_tibble(ts3$Y);colnames(tsdat3) <- c("X1","X2")
+tsdat3$Class <- factor(wine$Class)
+A <- ggplot(tsdat3, aes(X1,X2)) + geom_point(aes(color = Class), size = 2) + 
+  ggtitle("T-SNE with 20 Noise Features") + theme_bw() + 
+  scale_color_viridis_d() + theme(plot.title = element_text(hjust = 0.5))
+
+
+#BUILDS A 100-variable feature set
+### BUILDS A 20-variable feature set
+for(j in 1:100){
+  top <- ncol(wine_baseline)
+  wine_baseline[,top + 1]<- makeFakedata()
+    names(wine_baseline)[top + 1] <- paste0("Fake ",j)
+}
+## runs the t-sne and saves the plot
+ts3 <- Rtsne(wine_baseline[,-1], perplexity = 10, dims = 2, pca = FALSE)
+tsdat3 <- as_tibble(ts3$Y);colnames(tsdat3) <- c("X1","X2")
+tsdat3$Class <- factor(wine$Class)
+B <- ggplot(tsdat3, aes(X1,X2)) + geom_point(aes(color = Class), size = 2) +
+  ggtitle("T-SNE with 100 Noise Features") + theme_bw() + 
+  scale_color_viridis_d() + theme(plot.title = element_text(hjust = 0.5))
+
+
+#Builds a 1000-variable feature set
+for(j in 1:1000){
+  top <- ncol(wine_baseline)
+  wine_baseline[,top + 1]<- makeFakedata()
+    names(wine_baseline)[top + 1] <- paste0("Fake ",j)
+}
+## runs the t-sne and saves the plot
+ts3 <- Rtsne(wine_baseline[,-1], perplexity = 10, dims = 2, pca = FALSE)
+tsdat3 <- as_tibble(ts3$Y);colnames(tsdat3) <- c("X1","X2")
+tsdat3$Class <- factor(wine$Class)
+C <- ggplot(tsdat3, aes(X1,X2)) + geom_point(aes(color = Class), size = 2) + 
+  ggtitle("T-SNE with 1000 Noise Features") + theme_bw() + 
+  scale_color_viridis_d() + theme(plot.title = element_text(hjust = 0.5))
+
+ggarrange(A,B,C)
+```
+
+Alternatively, we might try simulating data with some weak, but non-zero, signal. Below, I simulate data with varying means (one for each Class of wine) with different (random) variances.  A correlation plot shows that these 20 factors contain some signal, but it is weak relative to the structure in the known features, as noted in Figure 15. Figure 16 gives the resulting t-SNE map. 
+
+```{r, eval = TRUE, fig.cap = "Correlation plot of 20 noise features with weak signal added in."}
+#simulate means in each group (will be normalized later)
+mu.1 <- 4
+mu.2 <- 9
+mu.3 <- 6
+muvec <- rep(0, nrow(wine))
+muvec <- ifelse(wine_baseline$Class == 1, mu.1,
+       ifelse(wine_baseline$Class == 2,mu.2,
+       mu.3))
+fake_weak_sig <- matrix(0,nrow = nrow(wine), ncol =20 )
+#samples the data with varying variance terms (so not all the same, but all still pretty big)
+for(j in 1:20){
+  fake_weak_sig[,j] <- rnorm(nrow(wine),muvec, sd = sample(3:10,1))
+}
+fake_scale <- scale(fake_weak_sig) %>% as_tibble()
+
+#rewrite the wine baseline object
+wine_baseline <- dplyr::select(wine.scale,index.use)
+wine_baseline$Class <- wine$Class
+
+#combine the fake data with some signal to the new data
+wine_baseline <- dplyr::select(wine.scale,index.use)
+wine_baseline$Class <- wine$Class
+
+new_wine <- cbind(wine_baseline, fake_scale)
+
+#shows the "weak" signal in the simulated variables
+corrplot(cor(new_wine))
+```
+
+```{r, fig.cap = "t-SNE with the weak signal features added in."}
+ts4 <- Rtsne(new_wine[,-1], perplexity = 10, dims = 2, pca = FALSE)
+tsdat4 <- as_tibble(ts4$Y);colnames(tsdat4) <- c("X1","X2")
+tsdat4$Class <- factor(wine$Class)
+ggplot(tsdat4, aes(X1,X2)) + geom_point(aes(color = Class), size = 2) + 
+  ggtitle("T-SNE with 20 Weakly Correlated Features") + theme_bw() + 
+  scale_color_viridis_d() + theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+A sparse version of t-SNE may also be worth testing in a less-supervised setting. Returning to the dataset used by West(2003), we can attempt to see how t-SNE would operate in a P>n setting with a lasso-selected group of features vs. t-SNE on the entire dataset.  
+
+In some sense, I think this dataset contains an interesting analogue to some biological situations, as well as genetics-type problems. We do not know exactly what the differences in each observation are (the recipes were varied but not systematically), but we suspect that there are groups in the underlying data. A method by which features were selected using RSKC according to a lasso penalty and then those features were used in t-SNE is utilized below - the resulting map is given in Figure 17. 
+
+Strikingly, the solutions for both are quite similar. Figure 18 shows the values of the cost functions are shown for each iteration. I decided to investigate the cost functions a bit more, so I ran repeated t-SNE runs for the entire dataset and the lasso-selected group.  In single runs it appears that the lasso-selected cost values are more stable than those of the full dataset; over multiple runs, it still seems to be the case. In running the code many times, the biggest spikes have come from the model run on the full dataset rather than the lasso-selected subgroup. 
+
+```{r unsupervised, eval = TRUE, fig.cap = "t-SNE maps for biscuit dough data.", fig.height = 4, fig.width = 8 }
+red.alpha = rgb(10,0,1,4, maxColorValue = 10)
+blue.alpha = rgb(0,1,10,5, maxColorValue = 10)
+
+library(ppls)
+data(cookie)
+X <- scale(as.matrix(cookie[,1:700]))#NIR spectra
+Y <- as.matrix(cookie[,701:704]) #I will likely ignore these
+
+ts1 <- Rtsne(X, perplexity = 10, dims = 2, pca = FALSE)
+tsdat <- as_tibble(ts1$Y);colnames(tsdat) <- c("X1","X2")
+tsdat$Fat <- Y[,4]
+
+p1 <- ggplot(tsdat, aes(X1,X2)) + geom_point(aes(color = Fat), size = 2) + 
+  ggtitle("Full Feature Set") + theme_bw()
+
+
+## Now try doing some sort of regularization on this
+rsk1 <- RSKC(X, ncl = 3, alpha = 0.3, L1 = 6)
+#plot(rsk1$weights)
+index.use <- which(rsk1$weights != 0)
+
+X.lasso <- X[,index.use]
+ts2 <- Rtsne(X.lasso, perplexity = 10, dims = 2, pca = FALSE)
+tsdat2 <- as_tibble(ts2$Y);colnames(tsdat2) <- c("X1","X2")
+tsdat2$Fat <- Y[,4]
+p2 <- ggplot(tsdat2, aes(X1,X2)) + geom_point(aes(color = Fat), size = 2) + 
+  ggtitle("Lasso-selected") + theme_bw()
+
+ggarrange(p1,p2)
+```
+
+```{r, fig.cap = "Cost functions for t-SNE runs on biscuit dough.", fig.height = 4, fig.width = 7}
+
+#looking at the KL cost function for both
+plot(1:length(ts1$costs), ts1$costs,main = "Cost Functions", ylab = "Cost Value",
+     xlab = "Iteration", type = "n", ylim = c(-0.01,.03))
+for(j in 1:20){
+ts1 <- Rtsne(X, perplexity = 10, dims = 2, pca = FALSE)
+ts2 <- Rtsne(X.lasso, perplexity = 10, dims = 2, pca = FALSE)
+lines(1:length(ts1$costs), ts1$costs, type = "l", col = blue.alpha)
+lines(1:length(ts2$costs), ts2$costs, type = "l", col = red.alpha)
+legend('topleft', fill = c('blue','red'), 
+       legend = c("All Features","Lasso-Selected"),bty = 'n')
+}
+
+```
+
+In conclusion, it seems like we have a few interesting things to think about regarding t-SNE and regularization. This method only explores a simple use of regularization to inform t-SNE, and the simulations are a bit contrived because I did not re-regularize after adding the noise features to the dataset (I'm sure the lasso would have selected a few of the noise features as well).  However, it seems that t-SNE breaks down in the presence of increasing numbers of uncorrelated features, and that it is possible to swamp a simulated dataset with enough noise that even t-SNE cannot reliably distinguish different observations based on features that drive data structure.  Moreover, after returning to the dataset used by West(2003), I think it is possible that the cost function is less variable when additional noise features are removed. More work is needed to verify this, and with the t-SNE, I'm never entirely sure if I'm looking at something real or an artifact of the random seed selected for a given run.  
+
+
+
+
+\newpage
+
+# Session Information
+
+```{r}
+sessionInfo()
+```
+
+
+# References:
+**PAUL REFERENCES**
+
+* Carvalho, C. M., Chang, J., Lucas, J. E., Nevins, J. R., Wang, Q., & West, M. (2008). High-Dimensional Sparse Factor Modeling: Applications in Gene Expression Genomics. Journal of the American Statistical Association, 103(484), 1438-1456.
+
+* Everitt, B., & Hothorn, T. (2011). An introduction to applied multivariate analysis with R. New York: Springer.
+
+* Hildreth, L. (2013). “Residual Analysis for Structural Equation Modeling.” Iowa State University, lib.dr.iastate.edu/etd/13400/
+
+* Hotelling, H. (1933). Analysis of a complex statistical variables into principal components. J. Educ. Psychol., 24, 414-441. 
+
+* Herman Chernoff (1973). "The Use of Faces to Represent Points in K-Dimensional Space Graphically" (PDF). Journal of the American Statistical Association. American Statistical Association. 68 (342): 361–368. doi:10.2307/2284077. JSTOR 2284077. Archived from the original (PDF) on 2012-04-15.
+
+* Meinshausen, N. (2007). Relaxed Lasso. Computational Statistics & Data Analysis, 52(1), pp.374-393.
+
+* P.J. Brown, T. Fearn, and M. Vannucci (2001) Bayesian Wavelet Regression on Curves with Applications to a Spectroscopic Calibration Problem. Journal of the American Statistical Association, 96, pp. 398-408.
+
+* B.G. Osborne, T. Fearn, A.R. Miller, and S. Douglas (1984) Application of Near-Infrared Reflectance Spectroscopy to Compositional Analysis of Biscuits and Biscuit Dough. Journal of the Science of Food and Agriculture, 35, pp. 99 - 105.
+
+* Kondo, Y., Salibian-Barrera, M., and Zamar, R. (2016). RSKC: Robust and Sparse K-Means Clustering in R. Journal of Statistical Software, 72, Issue 5. doi: 10.18637/jss.v072.i05. 
+
+* Kuhn, Max, and Kjell Johnson. Applied Predictive Modeling. Springer, 2016.
+
+* Hui Zou, Trevor Hastie & Robert Tibshirani (2006) Sparse Principal Component Analysis, Journal of Computational and Graphical Statistics, 15:2, 265-286, DOI: 10.1198/106186006X113430
+
+* Tanaka, Y., Watadani, S. and Moon, S. H. (1991). Influence in covariance structure analysis: with an application to confirmatory factor analysis. Communications in Statistics–
+Theory and Methods, 20(12), 3805–3821.
+
+
+**MARK REFERENCES**
+
+* Hirose, K., and Yamamoto, M.(2015) Sparse estimation via nonconcave penalized likelihood in factor analysis model, _Statistical Computing_, 25, 863-875.
+
+* Hirose, K., Yamamoto, M., and Nagata, H. (2016) fanc: Penalized Likelihood Factor Analysis via Nonconvex Penalty. R package version 2.2.
+
+* Jacobucci,  R. (2017) regsem: Regularized Structural Equation Modeling, arXiv:1703.08489v2.
+
+* Jacobucci, R. , Grimm, K., Brandmaier, A., Serang, S. and Kievit, R. (2019) regsem: Regularized Structural Equation Modeling. R package version 1.2.3.
+
+* Jacobucci, R., Grimm, K., and McArdle, J. (2016) Regularized Structural Equation Modeling, _Structural Equation Modeling: A Multidisciplinary Journal_, 23, 555-566.
+
+
+* Krijthe, J. (2015) Rtsne: T-Distributed Stochastic Neighbor Embedding
+  using a Barnes-Hut Implementation, URL: https://github.com/jkrijthe/Rtsne
+
+* van der Maaten, L. (2014) Accelerating t-SNE using Tree-Based Algorithms, _Journal of Machine Learning Research_,  15, 3221-3245.
+
+* van der Maaten, L. and Hinton, G. (2008) Visualizing High-Dimensional Data
+  Using t-SNE, _Journal of Machine Learning Research_, 9, 2579-2605.
+
+* Witten, D. and Tibshirani, R. (2010) A Framework for Feature Selection in Clustering, _Journal of the American Statistical Association_, 105:490, 713-726.
+
+* Witten, D. and Tibshirani, R. (2018) sparcl: Perform Sparse Hierarchical Clustering and Sparse K-Means Clustering. R package version 1.0.4.
+
+* Yamamoto, M., Hirose, K., and Nagata, H. (2017) Graphical tool of sparse factor analysis, _Behaviormetrika_, 44, 229-250.
+

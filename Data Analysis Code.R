@@ -34,6 +34,7 @@ open_position <- rep(c('Q','OL','OL_F','T'), each = nrow(bal_tibble_open))
 closed_position <- rep(c('Q','OL','OL_F'), each = nrow(bal_tibble_closed))
 
 #now we want to actually do the converstion on bal_tibbles to long form
+library(tidyr)
 open_long <- bal_tibble_open %>% gather(key = Position, value = Y,OQ,OOL, OOL_F,OT)
 closed_long <- bal_tibble_closed %>% gather(key = Position, value = Y, CQ,COL,COL_F)
 open_long$POS <- open_position
@@ -55,24 +56,25 @@ means$POS <- factor(means$POS, levels = c("Q","OL","OL_F"))
 
 sd <- filter_dat %>% group_by(Sport, Eyes, POS) %>% summarise(sd(Y))
 names(sd)[4] <- "SD"
-means$upper <- means$Agmean + sd$SD/sqrt(3) #since xbar has sd sqrt(sigma^2/n)
-means$lower <- means$Agmean -sd$SD/sqrt(3) #same
+means$upper <- means$Agmean + 1.96*sd$SD/sqrt(3) #since xbar has sd sqrt(sigma^2/n)
+means$lower <- means$Agmean -1.96*sd$SD/sqrt(3) #same
 
-means$Sport <- factor(means$Sport, levels = c("Baseball",'Soccer','Novice'))
+#means$Sport <- factor(means$Sport, levels = c("Baseball",'Soccer','Novice'))
 #for eyes open
 
 #actually creates the plot (with ribbons instead of bands for uncertainty)
 O <- ggplot(filter(means,Eyes == 'Open'), aes(POS,Agmean,group = Sport)) +
-  geom_line(aes(color = as.numeric(Sport)), size = 3) + ylab("Mean Area (mm)") +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.numeric(Sport)), alpha = .2)+ 
-  theme_bw() +theme(plot.title = element_text(hjust = 0.5)) + ggtitle("Eyes Open")
+  geom_line(aes(color = Sport), size = 3) + ylab("Mean Area (mm)") +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Sport), alpha = .2)+ 
+  theme_bw() +theme(plot.title = element_text(hjust = 0.5), legend.position = "none") + ggtitle("Eyes Open")
 #for eyes closed
 
 C <- ggplot(filter(means, Eyes == 'Closed'), aes(POS, Agmean, group = Sport))+
-  geom_line(aes(color = as.numeric(Sport)), size = 3) + ylab("Mean Area (mm)") + 
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.numeric(Sport)), alpha = .2)+ 
+  geom_line(aes(color = Sport), size = 3) + ylab("Mean Area (mm)") + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Sport), alpha = .2)+ 
   theme_bw() +theme(plot.title = element_text(hjust = 0.5)) + ggtitle("Eyes Closed")
-  
+
+
  
 # alternate solution but this method screws up the labels, better to re-level factors 
 #scale_color_discrete(name = "Sport", labels = c('Baseball','Soccer','Novice'))
@@ -113,12 +115,17 @@ leveneTest(filter_dat$Y, group = interaction(filter_dat$Sport,filter_dat$Eyes,fi
 ## A more appropriate model
 #
 library(lme4);library(lmerTest)
-mm1 <- lmer(Y ~ POS * Eyes *Sport + (1|Participant), data = filter_dat)
+mm1 <- lmer(log(Y) ~ POS * Eyes *Sport + (1|Participant), data = filter_dat)
 anova(mm1)
+
+# a slightly more complicated model
+mm2 <- lmer(log(Y)~ POS * Eyes + (Participant|Sport), data = filter_dat)
+summary(mm2)
+
 
 summary(mm1)
 qqnorm(resid(mm1));qqline(resid(mm1))
-
+plot(mm1)
 #other versions of this
 library(nlme)
 gls1 <- gls(Y ~ POS * Eyes * Sport, data = filter_dat, correlation = corCompSymm(form = ~ 1 | Participant))
@@ -135,6 +142,19 @@ plot(allEffects(mm1))
 plot(allEffects(gls1))
 
 
+
+#More Fun Versions of this
+
+##GLMNET: With Lasso
+library(glmnet)
+df_train <- na.omit(filter_dat)
+
+#fit the model
+Xtrain <- model.matrix(Y ~ Eyes*POS*Sport,data = df_train)
+cv.lm <- cv.glmnet(x = Xtrain, y=df_train$Y, alpha=1)
+coef(cv.lm)
+resid <- df_train$Y - predict(cv.lm, newx = Xtrain) 
+plot(resid)
 
 
 ## For Paper:
@@ -166,8 +186,13 @@ beanplot(Y ~ Sport, data = filter_dat, what = c(0,1,1,1), col = c("gold3",'blue4
 
 
 
-
-
+## Problem 7: 
+#Contrasts of all pairwise comparisons using Tukey
+library(emmeans)
+em_sport <- emmeans(mm1, c("Sport","POS","Eyes"))
+em_sport
+plot(em_sport) + ggtitle("Predicted Means") + theme_bw() + xlab("Predicted Log Mean") + ylab("Combinations")
+summary(em_sport)
 
 
 
