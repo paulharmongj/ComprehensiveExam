@@ -96,7 +96,7 @@ server <- function(input, output) {
         Z.alpha <- rgb(60,200,100,alpha = 80, maxColorValue = 255)
         
         
-        plot(0:1, 0:1, type = "n", main = "Truncated vs. Binomial Simulated Means")
+        plot(0:1, 0:1, type = "n", main = "Truncated vs. Binomial Simulated Means", xlab = "Probability", ylab = "", yaxt = 'n')
         abline(v = p, col = "blue", lwd = 2, lty = 2)
         abline(v = ZBIN.mle, col = rgb(60,200,100, maxColorValue = 255)) #adds Zero-Truncated Version
         rect(xleft = ZBIN.mle-ZBIN.var, xright = ZBIN.mle + ZBIN.var,ybottom = .5, ytop = 1, col = Z.alpha)
